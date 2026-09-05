@@ -1,0 +1,17 @@
+[package]
+name        = "leb128-nv"
+version     = "0.1.1"
+description = "Unsigned LEB128 varints over the full 64-bit range, the encoding DWARF and WebAssembly use for lengths and indices.  Encodes into a caller's buffer without allocating; a truncated or oversized input is a value, never a panic."
+license     = "Apache-2.0"
+stability   = "experimental"
+keywords    = ["leb128", "varint", "dwarf", "wasm", "encoding"]
+main        = "src/main.nv"
+
+# The README is the package's one page, and its own first heading is the
+# package name — which says nothing in a list of this package's pages.
+[docs.pages]
+"README.md" = "Reading and writing unsigned LEB128 varints"
+
+[dependencies]
+# None.  std.bytes supplies the buffer and the cursor, std.bits the
+# shifts; everything else is arithmetic.

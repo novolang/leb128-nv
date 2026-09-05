@@ -1,0 +1,169 @@
+// LEB128 — unsigned variable-length integers, the encoding DWARF and
+// WebAssembly use for every length, index and offset they write down.
+//
+// What it is.  A number is cut into 7-bit groups, least significant
+// group first.  Each group travels in one byte; the top bit of that
+// byte is 1 on every byte but the last, so a reader knows where the
+// number ends without being told its length.  Small numbers are short:
+// everything below 128 is a single byte, which is what makes the
+// encoding worth its arithmetic in a format full of small numbers.
+//
+// What it does.  `encode` and `decode` for the full unsigned 64-bit
+// range, `encoded_len` for the size a value will take, and `max_len`
+// for the size any value can take — the number to reserve when the
+// value is not yet known.
+//
+// How to use it.  The in-place pair takes a cursor over a buffer the
+// caller owns, and allocates nothing:
+//
+//     var c = bytes.cursor_le(bytes.zeros(leb128.max_len()))
+//     let n = leb128.encode_into(c, 624485)      // 3
+//
+// The allocating pair is one call and sizes the buffer itself:
+//
+//     let wire = leb128.encode(624485)           // e5 8e 26
+//
+// A malformed input is a value, never a panic: `decode` answers
+// `Err(Truncated)` when the input runs out mid-number and
+// `Err(Overflow)` when the number does not fit 64 bits.
+//
+// What it costs.  Encoding is one loop iteration per output byte, with
+// a shift and a mask each; decoding is the same, plus one bounds test
+// per byte.  Neither allocates.  The arithmetic is `Int` throughout, so
+// nothing here needs a heap, and the encoding is fixed by the DWARF
+// specification (§7.6) rather than by this implementation.
+
+use std.bits
+use std.bytes
+
+// The most bytes an unsigned 64-bit value can occupy: nine full 7-bit
+// groups carry 63 bits, so the sixty-fourth needs a tenth byte.  This
+// is the room to reserve for a value you have not computed yet.
+pub fn max_len() -> Int
+    10
+
+// What went wrong while reading, and after how many bytes.  Both are
+// input faults rather than programming mistakes, so both are values.
+pub enum Leb128Error
+    // The input ended while a continuation bit was still set.
+    Truncated(after: Int)
+    // The groups read so far already exceed 64 bits.
+    Overflow(after: Int)
+
+impl Error for Leb128Error
+    fn message(self) -> Str
+        match self
+            Truncated(after) => "leb128: input ended after ${after} byte(s) with the varint unfinished"
+            Overflow(after)  => "leb128: the varint exceeds 64 bits after ${after} byte(s)"
+
+// How many bytes `value` will occupy, without encoding it.  `value` is
+// read as an unsigned 64-bit number, so a negative `Int` is the bit
+// pattern of a value at or above 2^63 and takes all ten bytes.
+pub fn encoded_len(value: Int) -> Int
+    // Logical shifts, so the sign bit does not smear and the loop
+    // terminates on a negative `Int` the way it does on a positive one.
+    var rest = bits.shr(value, 7)
+    var n = 1
+    while rest != 0
+        rest = bits.shr(rest, 7)
+        n = n + 1
+    n
+
+// `value` at the cursor, in as many bytes as it needs; the count is the
+// return.  Writes into the caller's buffer and allocates nothing.
+//
+// The cursor must have `encoded_len(value)` bytes of room — reserving
+// `max_len()` always suffices.  Too little room is a panic, exactly as
+// it is for `c.put_u8` itself and for `xs[i]`: a buffer the caller
+// sized wrong is a mistake in the program, not a value the program
+// should carry around.  `dst.remaining()` is the check when the room is
+// in question.
+pub fn encode_into(mut dst: Cursor, value: Int) -> Int
+    var rest = value
+    var written = 0
+    var more = true
+    while more
+        let group = bits.band(rest, 0x7f)
+        rest = bits.shr(rest, 7)
+        more = rest != 0
+        // Every byte but the last carries the continuation bit.
+        if more
+            dst.put_u8(bits.bor(group, 0x80))
+        else
+            dst.put_u8(group)
+        written = written + 1
+    written
+
+// `value` as a fresh buffer of exactly its own length.  One allocation,
+// for the caller that is building a message rather than filling a frame.
+pub fn encode(value: Int) -> Bytes
+    var c = bytes.cursor_le(bytes.zeros(encoded_len(value)))
+    let _ = encode_into(c, value)
+    c.finish()
+
+// The varint at the cursor, leaving the cursor on the byte after it.
+// Reads out of the caller's buffer and allocates nothing.
+//
+// The cursor's position after a successful read is how far the number
+// reached, so a caller decoding a run of varints needs nothing else.
+pub fn decode_from(mut src: Cursor) -> Result<Int, Leb128Error>
+    var acc = 0
+    var shift = 0
+    var used = 0
+    var answer: Result<Int, Leb128Error> = Err(Truncated(after: 0))
+    var reading = true
+    while reading
+        if src.remaining() == 0
+            answer = Err(Truncated(after: used))
+            reading = false
+        else
+            let b = src.u8()
+            used = used + 1
+            let group = bits.band(b, 0x7f)
+            // The tenth byte reaches bit 63, so only its lowest bit
+            // belongs to the value; anything above it is a number that
+            // does not fit, and so is a continuation bit at that point.
+            if shift == 63 and group > 1
+                answer = Err(Overflow(after: used))
+                reading = false
+            else
+                acc = bits.bor(acc, bits.shl(group, shift))
+                if bits.band(b, 0x80) == 0
+                    answer = Ok(acc)
+                    reading = false
+                else if shift == 63
+                    answer = Err(Overflow(after: used))
+                    reading = false
+                else
+                    shift = shift + 7
+    answer
+
+// The varint at the start of `src`, ignoring whatever follows it.  The
+// convenience form: it builds a cursor and throws it away, so a caller
+// reading a run of varints should hold one cursor instead.
+pub fn decode(src: Bytes) -> Result<Int, Leb128Error>
+    var c = bytes.cursor_le(src)
+    decode_from(c)
+
+// A varint and the number of bytes it occupied.  The pair is one value
+// rather than two returns because a reader that has the value and not
+// the length cannot find the next field.
+pub struct Decoded
+    value: Int
+    len: Int
+
+// The varint at `off` in `src`, with the length it took.  For a caller
+// walking a buffer by offset rather than by cursor — a table of
+// varint-encoded entries, a format that gives each record's start.
+//
+// An offset outside the buffer is `Truncated` rather than a panic: an
+// offset read out of the data being decoded is input, and input is
+// never a reason to crash.
+pub fn decode_at(src: Bytes, off: Int) -> Result<Decoded, Leb128Error>
+    if off < 0 or off > bytes.len(src)
+        Err(Truncated(after: 0))
+    else
+        var c = bytes.cursor_le(src)
+        c.seek(off)
+        let value = decode_from(c)!
+        Ok(Decoded { value: value, len: c.pos() - off })
