@@ -33,7 +33,6 @@
 // nothing here needs a heap, and the encoding is fixed by the DWARF
 // specification (§7.6) rather than by this implementation.
 
-use std.bits
 use std.bytes
 
 // The most bytes an unsigned 64-bit value can occupy: nine full 7-bit
@@ -60,12 +59,12 @@ impl Error for Leb128Error
 // read as an unsigned 64-bit number, so a negative `Int` is the bit
 // pattern of a value at or above 2^63 and takes all ten bytes.
 pub fn encoded_len(value: Int) -> Int
-    // Logical shifts, so the sign bit does not smear and the loop
-    // terminates on a negative `Int` the way it does on a positive one.
-    var rest = bits.shr(value, 7)
+    // `>>>`, the logical shift: `>>` would smear the sign bit and the
+    // loop would never terminate on a negative `Int`.
+    var rest = value >>> 7
     var n = 1
     while rest != 0
-        rest = bits.shr(rest, 7)
+        rest >>>= 7
         n = n + 1
     n
 
@@ -83,12 +82,12 @@ pub fn encode_into(mut dst: Cursor, value: Int) -> Int
     var written = 0
     var more = true
     while more
-        let group = bits.band(rest, 0x7f)
-        rest = bits.shr(rest, 7)
+        let group = rest & 0x7f
+        rest >>>= 7
         more = rest != 0
         // Every byte but the last carries the continuation bit.
         if more
-            dst.put_u8(bits.bor(group, 0x80))
+            dst.put_u8(group | 0x80)
         else
             dst.put_u8(group)
         written = written + 1
@@ -119,7 +118,7 @@ pub fn decode_from(mut src: Cursor) -> Result<Int, Leb128Error>
         else
             let b = src.u8()
             used = used + 1
-            let group = bits.band(b, 0x7f)
+            let group = b & 0x7f
             // The tenth byte reaches bit 63, so only its lowest bit
             // belongs to the value; anything above it is a number that
             // does not fit, and so is a continuation bit at that point.
@@ -127,8 +126,8 @@ pub fn decode_from(mut src: Cursor) -> Result<Int, Leb128Error>
                 answer = Err(Overflow(after: used))
                 reading = false
             else
-                acc = bits.bor(acc, bits.shl(group, shift))
-                if bits.band(b, 0x80) == 0
+                acc |= group << shift
+                if (b & 0x80) == 0
                     answer = Ok(acc)
                     reading = false
                 else if shift == 63

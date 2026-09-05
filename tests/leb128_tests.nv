@@ -66,7 +66,7 @@ fn test_the_whole_unsigned_range_round_trips() [io]
     test.assert_eq(leb128.encoded_len(all_ones), leb128.max_len())
     test.assert_eq_str(hex_of(all_ones), "ffffffffffffffffff01")
     test.assert_eq_str(decoded_text("ffffffffffffffffff01"), str.from_int(all_ones))
-    let two_to_the_63 = bits.shl(1, 63)
+    let two_to_the_63 = 1 << 63
     test.assert_eq_str(decoded_text(hex_of(two_to_the_63)), str.from_int(two_to_the_63))
 
 @test
@@ -137,7 +137,7 @@ fn test_encoded_len_agrees_with_encode() [io]
     // The two answers must never disagree: `encode` sizes its buffer
     // from `encoded_len`, so a mismatch would truncate silently.
     for shift in 0 .. 64
-        let value = bits.shl(1, shift)
+        let value = 1 << shift
         test.case("1 << ${shift}")
         test.assert_eq(leb128.encoded_len(value), bytes.len(leb128.encode(value)))
 
@@ -166,7 +166,7 @@ fn test_decode_at_agrees_with_encoded_len() [io]
     // predicts must be the same number, or a reader and a writer
     // sharing a buffer would disagree about where a field ends.
     for shift in 0 .. 64
-        let value = bits.shl(1, shift)
+        let value = 1 << shift
         test.case("1 << ${shift}")
         match leb128.decode_at(leb128.encode(value), 0)
             Err(e) => test.fail(e.message())

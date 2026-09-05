@@ -4,6 +4,22 @@ Newest first.  Below `1.0.0` a breaking change bumps the **minor**
 number and a compatible one the **patch**; see [Version numbers in the
 Orbit package registry](https://novo-lang.org/docs/registry/semver.html).
 
+## 0.1.2
+
+A patch: the bytes are unchanged and every signature is the same.  The
+DWARF vectors, both ends of the 64-bit range and the two malformed
+inputs all still pass, which is what says so.
+
+- **The bit arithmetic is written with the operators.**  `bits.band`,
+  `bits.bor`, `bits.shl` and `bits.shr` become `&`, `|`, `<<` and
+  `>>>`, and the two accumulator loops use `>>>=` and `|=`.  The
+  encoder's group extraction now reads `rest & 0x7f`, which is the line
+  the DWARF specification writes.  Nothing about the encoding changed.
+- **The test module moved out of `src/`.**  A package's `src/` ships
+  whole and a consumer compiles every module in it, so the suite is
+  under `tests/` where it is not published.  Run it with
+  `novo test tests/leb128_tests.nv`.
+
 ## 0.1.1
 
 A patch, deliberately.  Everything `0.1.0` shipped keeps its name, its
