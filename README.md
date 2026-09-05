@@ -1,3 +1,5 @@
+> Developed in the novo-lang monorepo under `orbit/leb128-nv`, which is the source of truth until this package graduates out of it.  This repository is a mirror: it is where CI runs and where releases are tagged, and changes are made upstream.
+
 # leb128-nv
 
 Unsigned LEB128 varints, over the full 64-bit range. LEB128 is how
