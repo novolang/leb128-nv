@@ -4,7 +4,10 @@ version     = "0.1.1"
 description = "Unsigned LEB128 varints over the full 64-bit range, the encoding DWARF and WebAssembly use for lengths and indices.  Encodes into a caller's buffer without allocating; a truncated or oversized input is a value, never a panic."
 license     = "Apache-2.0"
 stability   = "experimental"
-keywords    = ["leb128", "varint", "dwarf", "wasm", "encoding"]
+category    = "encoding"
+tags        = ["leb128", "varint", "dwarf", "wasm"]
+repository  = "https://github.com/novolang/leb128-nv"
+maintainers = ["novo-lang"]
 main        = "src/main.nv"
 
 # The README is the package's one page, and its own first heading is the

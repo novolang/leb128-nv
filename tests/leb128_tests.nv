@@ -2,7 +2,7 @@
 // ends, and the two ways a reader can be handed something malformed.
 //
 // Run from the package directory:
-//   novo test src/leb128_tests.nv
+//   novo test tests/leb128_tests.nv
 //
 // The vectors in `test_dwarf_unsigned_examples` are DWARF 4 §7.6's
 // table of unsigned LEB128 encodings, copied value for value.  They are

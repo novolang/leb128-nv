@@ -124,7 +124,7 @@ bytes rather than resume mid-number.
 ## Tests
 
 ```
-novo test src/leb128_tests.nv
+novo test tests/leb128_tests.nv
 ```
 
 The vectors are DWARF 4 §7.6's own table of unsigned encodings, copied
