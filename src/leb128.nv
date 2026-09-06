@@ -13,15 +13,13 @@
 // for the size any value can take — the number to reserve when the
 // value is not yet known.
 //
-// How to use it.  The in-place pair takes a cursor over a buffer the
-// caller owns, and allocates nothing:
-//
-//     var c = bytes.cursor_le(bytes.zeros(leb128.max_len()))
-//     let n = leb128.encode_into(c, 624485)      // 3
-//
-// The allocating pair is one call and sizes the buffer itself:
-//
-//     let wire = leb128.encode(624485)           // e5 8e 26
+// How to use it.  There are two pairs and they answer the same
+// question.  `encode` / `decode` allocate a buffer and are the pair to
+// reach for when you are building a message; `encode_into` /
+// `decode_from` take a cursor over a buffer the caller already owns and
+// allocate nothing, which is what a frame writer wants.  `decode_at`
+// asks by offset instead of by cursor, for a format that hands out each
+// record's start.  Each carries a worked example below.
 //
 // A malformed input is a value, never a panic: `decode` answers
 // `Err(Truncated)` when the input runs out mid-number and
@@ -35,29 +33,60 @@
 
 use std.bytes
 
-// The most bytes an unsigned 64-bit value can occupy: nine full 7-bit
-// groups carry 63 bits, so the sixty-fourth needs a tenth byte.  This
-// is the room to reserve for a value you have not computed yet.
+// Answer the most bytes an unsigned 64-bit value can occupy: ten.
+//
+// Nine full 7-bit groups carry 63 bits, so the sixty-fourth needs a
+// tenth byte.  This is the room to reserve for a value you have not
+// computed yet — a length you are about to back-patch, a field whose
+// size depends on what follows it.
+//
+// ```novo
+// println("${leb128.max_len()}")            // 10
+//
+// // -1 read as a u64 is 2^64 - 1, the widest value there is.
+// println("${leb128.encoded_len(0 - 1)}")   // 10
+// ```
 pub fn max_len() -> Int
     10
 
-// What went wrong while reading, and after how many bytes.  Both are
-// input faults rather than programming mistakes, so both are values.
+// What went wrong while reading, and after how many bytes.
+//
+// Both variants are input faults rather than programming mistakes, so
+// both are values a caller carries rather than panics: bytes arriving
+// from a file or a socket are never a reason to crash.  Each says how
+// far the reader got, so a caller reporting a bad frame can say where
+// in it the trouble was.  `decode` carries the worked example.
 pub enum Leb128Error
     // The input ended while a continuation bit was still set.
     Truncated(after: Int)
     // The groups read so far already exceed 64 bits.
     Overflow(after: Int)
 
+// The standard `Error` implementation, so a `Leb128Error` can be
+// reported by anything that reports errors.
 impl Error for Leb128Error
+    // Answer the one-line report: what was wrong, and after how many
+    // bytes of input.  The count is in the text rather than left for
+    // the caller to append, because the caller printing an error is the
+    // one least likely to still have it to hand.
     fn message(self) -> Str
         match self
             Truncated(after) => "leb128: input ended after ${after} byte(s) with the varint unfinished"
             Overflow(after)  => "leb128: the varint exceeds 64 bits after ${after} byte(s)"
 
-// How many bytes `value` will occupy, without encoding it.  `value` is
-// read as an unsigned 64-bit number, so a negative `Int` is the bit
-// pattern of a value at or above 2^63 and takes all ten bytes.
+// Answer how many bytes `value` will occupy, without encoding it.
+//
+// `value` is read as an unsigned 64-bit number, so a negative `Int` is
+// the bit pattern of a value at or above 2^63 and takes all ten bytes.
+// Nothing is refused and nothing is allocated: it is the loop `encode`
+// runs, without the buffer.
+//
+// ```novo
+// // The length steps at every seventh power of two, and nowhere else.
+// println("${leb128.encoded_len(127)} ${leb128.encoded_len(128)}")       // 1 2
+// println("${leb128.encoded_len(16383)} ${leb128.encoded_len(16384)}")   // 2 3
+// println("${leb128.encoded_len(624485)}")                               // 3
+// ```
 pub fn encoded_len(value: Int) -> Int
     // `>>>`, the logical shift: `>>` would smear the sign bit and the
     // loop would never terminate on a negative `Int`.
@@ -68,8 +97,8 @@ pub fn encoded_len(value: Int) -> Int
         n = n + 1
     n
 
-// `value` at the cursor, in as many bytes as it needs; the count is the
-// return.  Writes into the caller's buffer and allocates nothing.
+// Write `value` at the cursor in as many bytes as it needs, and answer
+// that count.  Writes into the caller's buffer and allocates nothing.
 //
 // The cursor must have `encoded_len(value)` bytes of room — reserving
 // `max_len()` always suffices.  Too little room is a panic, exactly as
@@ -77,6 +106,15 @@ pub fn encoded_len(value: Int) -> Int
 // sized wrong is a mistake in the program, not a value the program
 // should carry around.  `dst.remaining()` is the check when the room is
 // in question.
+//
+// ```novo
+// use std.bytes
+//
+// // A buffer the caller owns, with room for any single varint.
+// var wire = bytes.cursor_le(bytes.zeros(leb128.max_len()))
+// println("${leb128.encode_into(wire, 624485)}")             // 3
+// println(bytes.to_hex(bytes.slice(wire.finish(), 0, 3)))    // e58e26
+// ```
 pub fn encode_into(mut dst: Cursor, value: Int) -> Int
     var rest = value
     var written = 0
@@ -93,18 +131,50 @@ pub fn encode_into(mut dst: Cursor, value: Int) -> Int
         written = written + 1
     written
 
-// `value` as a fresh buffer of exactly its own length.  One allocation,
-// for the caller that is building a message rather than filling a frame.
+// Answer `value` as a fresh buffer of exactly its own length.
+//
+// One allocation, for the caller that is building a message rather than
+// filling a frame; `encode_into` is the same encoding with the buffer
+// left to the caller.  `decode` inverts this exactly over the whole
+// unsigned 64-bit range, which is the round trip worth relying on.
+//
+// ```novo
+// use std.bytes
+//
+// // 624485 is the worked example every description of LEB128 uses:
+// // the smallest number that needs three groups.
+// println(bytes.to_hex(leb128.encode(624485)))   // e58e26
+//
+// // The round trip, in the direction a caller depends on.
+// match leb128.decode(leb128.encode(624485))
+//     Ok(v)  => println("${v}")                  // 624485
+//     Err(e) => println(e.message())
+// ```
 pub fn encode(value: Int) -> Bytes
     var c = bytes.cursor_le(bytes.zeros(encoded_len(value)))
     let _ = encode_into(c, value)
     c.finish()
 
-// The varint at the cursor, leaving the cursor on the byte after it.
-// Reads out of the caller's buffer and allocates nothing.
+// Read the varint at the cursor, leaving the cursor on the byte after
+// it.  Reads out of the caller's buffer and allocates nothing.
 //
 // The cursor's position after a successful read is how far the number
-// reached, so a caller decoding a run of varints needs nothing else.
+// reached, so a caller decoding a run of varints needs nothing else —
+// it calls again.  A number that runs off the end of the buffer is
+// `Err(Truncated)`, and the cursor is left where the reading stopped.
+//
+// ```novo
+// use std.bytes
+//
+// // Two varints back to back: 624485, then 2.
+// var r = bytes.cursor_le(bytes.from_hex("e58e2602") ?? bytes.zeros(0))
+// match leb128.decode_from(r)
+//     Ok(v)  => println("${v} ends at ${r.pos()}")   // 624485 ends at 3
+//     Err(e) => println(e.message())
+// match leb128.decode_from(r)
+//     Ok(v)  => println("${v} ends at ${r.pos()}")   // 2 ends at 4
+//     Err(e) => println(e.message())
+// ```
 pub fn decode_from(mut src: Cursor) -> Result<Int, Leb128Error>
     var acc = 0
     var shift = 0
@@ -137,27 +207,63 @@ pub fn decode_from(mut src: Cursor) -> Result<Int, Leb128Error>
                     shift = shift + 7
     answer
 
-// The varint at the start of `src`, ignoring whatever follows it.  The
-// convenience form: it builds a cursor and throws it away, so a caller
-// reading a run of varints should hold one cursor instead.
+// Read the varint at the start of `src`, ignoring whatever follows it.
+//
+// The convenience form: it builds a cursor and throws it away, so a
+// caller reading a run of varints should hold one cursor and call
+// `decode_from` instead.  A truncated or oversized input is an `Err`
+// carrying the byte count reached, never a panic.
+//
+// ```novo
+// use std.bytes
+//
+// match leb128.decode(bytes.from_hex("e58e26") ?? bytes.zeros(0))
+//     Ok(v)  => println("${v}")           // 624485
+//     Err(e) => println(e.message())
+//
+// // Two bytes of a three-byte number: an answer, not a crash.
+// match leb128.decode(bytes.from_hex("e58e") ?? bytes.zeros(0))
+//     Ok(v)  => println("${v}")
+//     Err(e) => println(e.message())      // leb128: input ended after 2 byte(s) …
+// ```
 pub fn decode(src: Bytes) -> Result<Int, Leb128Error>
     var c = bytes.cursor_le(src)
     decode_from(c)
 
-// A varint and the number of bytes it occupied.  The pair is one value
-// rather than two returns because a reader that has the value and not
-// the length cannot find the next field.
+// A varint and the number of bytes it occupied.
+//
+// The pair is one value rather than two returns because a reader that
+// has the value and not the length cannot find the next field.
+// `decode_at` is what answers one.
 pub struct Decoded
     value: Int
     len: Int
 
-// The varint at `off` in `src`, with the length it took.  For a caller
-// walking a buffer by offset rather than by cursor — a table of
-// varint-encoded entries, a format that gives each record's start.
+// Read the varint at `off` in `src`, and answer it with the length it
+// took.
+//
+// For a caller walking a buffer by offset rather than by cursor — a
+// table of varint-encoded entries, a format that hands out each
+// record's start.  The next offset is `off + d.len`.
 //
 // An offset outside the buffer is `Truncated` rather than a panic: an
 // offset read out of the data being decoded is input, and input is
 // never a reason to crash.
+//
+// ```novo
+// use std.bytes
+//
+// // Two varints; the second starts where the first one ended.
+// let buf = bytes.from_hex("e58e2602") ?? bytes.zeros(0)
+// match leb128.decode_at(buf, 0)
+//     Ok(d)  => println("${d.value} in ${d.len} byte(s)")   // 624485 in 3 byte(s)
+//     Err(e) => println(e.message())
+//
+// // An offset past the end is an answer too.
+// match leb128.decode_at(buf, 99)
+//     Ok(d)  => println("${d.value}")
+//     Err(e) => println(e.message())   // leb128: input ended after 0 byte(s) …
+// ```
 pub fn decode_at(src: Bytes, off: Int) -> Result<Decoded, Leb128Error>
     if off < 0 or off > bytes.len(src)
         Err(Truncated(after: 0))
