@@ -27,15 +27,11 @@ novo pkg add leb128-nv
 
 ## What it gives you
 
-| Function | |
-|---|---|
-| `leb128.max_len() -> Int` | `10` — the room to reserve for a value not yet computed |
-| `leb128.encoded_len(value: Int) -> Int` | the bytes `value` will take, without encoding it |
-| `leb128.encode_into(dst: Cursor, value: Int) -> Int` | `value` at the cursor; the byte count is the return |
-| `leb128.encode(value: Int) -> Bytes` | a fresh buffer of exactly the right length |
-| `leb128.decode_from(src: Cursor) -> Result<Int, Leb128Error>` | the varint at the cursor, leaving it on the next byte |
-| `leb128.decode(src: Bytes) -> Result<Int, Leb128Error>` | the varint at the start of a buffer |
-| `leb128.decode_at(src: Bytes, off: Int) -> Result<Decoded, Leb128Error>` | the varint at an offset, with the length it took |
+The API is on [the package's page](https://novo-lang.org/packages/leb128-nv),
+generated from these sources: every `pub` declaration with its signature,
+its effect row and the comment block written above it. A table of names
+here would be a second original, and the second original is the one that
+goes stale.
 
 `Leb128Error` has two variants and both are input faults: `Truncated`
 when the input ends with a continuation bit still set, `Overflow` when
