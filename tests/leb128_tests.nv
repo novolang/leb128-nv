@@ -136,7 +136,7 @@ fn test_decode_from_leaves_the_cursor_on_the_next_varint() [io]
 fn test_encoded_len_agrees_with_encode() [io]
     // The two answers must never disagree: `encode` sizes its buffer
     // from `encoded_len`, so a mismatch would truncate silently.
-    for shift in 0 .. 64
+    for shift in 0..64
         let value = 1 << shift
         test.case("1 << ${shift}")
         test.assert_eq(leb128.encoded_len(value), bytes.len(leb128.encode(value)))
@@ -148,7 +148,7 @@ fn test_decode_at_reports_the_length_it_read() [io]
     let buf = bytes.from_hex("00e58e268001") ?? bytes.zeros(0)
     var off = 0
     var values: [Int] = []
-    for _step in 0 .. 3
+    for _step in 0..3
         match leb128.decode_at(buf, off)
             Err(e) => test.fail(e.message())
             Ok(d)  =>
@@ -165,7 +165,7 @@ fn test_decode_at_agrees_with_encoded_len() [io]
     // The length `decode_at` reports and the length `encoded_len`
     // predicts must be the same number, or a reader and a writer
     // sharing a buffer would disagree about where a field ends.
-    for shift in 0 .. 64
+    for shift in 0..64
         let value = 1 << shift
         test.case("1 << ${shift}")
         match leb128.decode_at(leb128.encode(value), 0)
