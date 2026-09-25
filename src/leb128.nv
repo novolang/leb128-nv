@@ -135,7 +135,7 @@ pub fn encoded_len(value: Int) -> Int
 // println("${n}")                                            // 4
 // println(bytes.to_hex(bytes.slice(wire.finish(), 0, n)))    // e58e2602
 // ```
-pub fn encode_into(mut dst: Cursor, value: Int) -> Int
+pub fn encode_into(var dst: Cursor, value: Int) -> Int
     var rest = value
     var written = 0
     var more = true
@@ -195,7 +195,7 @@ pub fn encode(value: Int) -> Bytes
 //     Ok(v)  => println("${v} ends at ${r.pos()}")   // 2 ends at 4
 //     Err(e) => println(e.message())
 // ```
-pub fn decode_from(mut src: Cursor) -> Result<Int, Leb128Error>
+pub fn decode_from(var src: Cursor) -> Result<Int, Leb128Error>
     var acc = 0
     var shift = 0
     var used = 0
@@ -230,10 +230,11 @@ pub fn decode_from(mut src: Cursor) -> Result<Int, Leb128Error>
 
 // Read the varint at the start of `src`, ignoring whatever follows it.
 //
-// This is the convenience form.  It builds a cursor and throws it away,
-// so a caller reading a run of varints holds one cursor and calls
-// `decode_from` instead.  A truncated or oversized input is an `Err`
-// carrying the byte count reached, never a panic.
+// This is the convenience form.  It reads the bytes where they are and
+// keeps no position, so a caller reading a run of varints holds one
+// cursor and calls `decode_from` instead, or walks by offset with
+// `decode_at`.  A truncated or oversized input is an `Err` carrying the
+// byte count reached, never a panic.
 //
 // ```novo
 // use std.bytes
@@ -248,8 +249,9 @@ pub fn decode_from(mut src: Cursor) -> Result<Int, Leb128Error>
 //     Err(e) => println(e.message())      // leb128: input ended after 2 byte(s) …
 // ```
 pub fn decode(src: Bytes) -> Result<Int, Leb128Error>
-    var c = bytes.cursor_le(src)
-    decode_from(c)
+    match scan(src, 0)
+        Ok(d)  => Ok(d.value)
+        Err(e) => Err(e)
 
 // A varint and the number of bytes it occupied.
 //
@@ -290,7 +292,39 @@ pub fn decode_at(src: Bytes, off: Int) -> Result<Decoded, Leb128Error>
     if off < 0 or off > bytes.len(src)
         Err(Truncated(after: 0))
     else
-        var c = bytes.cursor_le(src)
-        c.seek(off)
-        let value = decode_from(c)!
-        Ok(Decoded { value: value, len: c.pos() - off })
+        scan(src, off)
+
+// Read the varint at `off` in `src` byte by byte, without a cursor.
+//
+// A cursor takes its buffer as one it may write into, and `src` is the
+// caller's buffer, handed over to be read.  Reading each byte by its
+// offset leaves that buffer alone and copies nothing.  The steps are
+// the ones `decode_from` takes.
+fn scan(src: Bytes, off: Int) -> Result<Decoded, Leb128Error>
+    var acc = 0
+    var shift = 0
+    var used = 0
+    var answer: Result<Decoded, Leb128Error> = Err(Truncated(after: 0))
+    var reading = true
+    while reading
+        match bytes.byte_at(src, off + used)
+            None    =>
+                answer = Err(Truncated(after: used))
+                reading = false
+            Some(b) =>
+                used = used + 1
+                let group = b & 0x7f
+                if shift == 63 and group > 1
+                    answer = Err(Overflow(after: used))
+                    reading = false
+                else
+                    acc |= group << shift
+                    if (b & 0x80) == 0
+                        answer = Ok(Decoded { value: acc, len: used })
+                        reading = false
+                    else if shift == 63
+                        answer = Err(Overflow(after: used))
+                        reading = false
+                    else
+                        shift = shift + 7
+    answer

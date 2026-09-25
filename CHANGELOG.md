@@ -4,6 +4,14 @@ Newest first.  Below `1.0.0` a breaking change bumps the **minor**
 number and a compatible one the **patch**; see [Version numbers in the
 Orbit package registry](https://novo-lang.org/docs/registry/semver.html).
 
+## 0.1.7 — 2026-09-25
+
+`decode` and `decode_at` read the caller's buffer byte by byte where it
+is, instead of through a cursor.  A cursor may write into the buffer it
+holds, and the next Novo release refuses to build a writable cursor over
+a buffer the caller passed in only to be read.  No signature changed,
+nothing is copied, and every answer is what 0.1.6 gave.
+
 ## 0.1.6 — 2026-09-18
 
 The documentation and comments in plain prose; no signature changed.
