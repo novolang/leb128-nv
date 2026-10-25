@@ -172,7 +172,7 @@ pub fn encode_into(var dst: Cursor, value: Int) -> Int
 // ```
 pub fn encode(value: Int) -> Bytes
     var c = bytes.cursor_le(bytes.zeros(encoded_len(value)))
-    let _ = encode_into(c, value)
+    let _ = encode_into(var c, value)
     c.finish()
 
 // Read the varint at the cursor, and leave the cursor on the byte after

@@ -4,6 +4,10 @@ Newest first.  Below `1.0.0` a breaking change bumps the **minor**
 number and a compatible one the **patch**; see [Version numbers in the
 Orbit package registry](https://novo-lang.org/docs/registry/semver.html).
 
+## 0.1.8 — 2026-10-25
+
+A call that passes a variable to a `var` parameter now writes the `var` marker, which the 0.21.1 compiler asks for (E2050).  The package needs Novo 0.21.1 or later.  No signature and no behaviour changed.
+
 ## 0.1.7 — 2026-09-25
 
 `decode` and `decode_at` read the caller's buffer byte by byte where it

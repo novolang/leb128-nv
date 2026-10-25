@@ -112,9 +112,9 @@ fn test_encode_into_writes_where_it_is_told_and_allocates_nothing() [io]
     // One buffer and three varints appended in sequence.  The cursor
     // carries the position from one to the next.
     var c = bytes.cursor_le(bytes.zeros(3 * leb128.max_len()))
-    let a = leb128.encode_into(c, 0)
-    let b = leb128.encode_into(c, 624485)
-    let d = leb128.encode_into(c, 128)
+    let a = leb128.encode_into(var c, 0)
+    let b = leb128.encode_into(var c, 624485)
+    let d = leb128.encode_into(var c, 128)
     test.assert_eq(a, 1)
     test.assert_eq(b, 3)
     test.assert_eq(d, 2)
@@ -124,17 +124,17 @@ fn test_encode_into_writes_where_it_is_told_and_allocates_nothing() [io]
 @test
 fn test_decode_from_leaves_the_cursor_on_the_next_varint() [io]
     var c = bytes.cursor_le(bytes.from_hex("00e58e268001") ?? bytes.zeros(0))
-    match leb128.decode_from(c)
+    match leb128.decode_from(var c)
         Err(e) => test.fail(e.message())
         Ok(v)  =>
             test.assert_eq(v, 0)
             test.assert_eq(c.pos(), 1)
-    match leb128.decode_from(c)
+    match leb128.decode_from(var c)
         Err(e) => test.fail(e.message())
         Ok(v)  =>
             test.assert_eq(v, 624485)
             test.assert_eq(c.pos(), 4)
-    match leb128.decode_from(c)
+    match leb128.decode_from(var c)
         Err(e) => test.fail(e.message())
         Ok(v)  =>
             test.assert_eq(v, 128)
