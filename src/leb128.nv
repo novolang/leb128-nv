@@ -221,6 +221,7 @@ pub fn decode_from(var src: Cursor) -> Result<Int, Leb128Error>
                 if (b & 0x80) == 0
                     answer = Ok(acc)
                     reading = false
+                // cov: skip — the tenth byte is refused above, so no byte reaches shift 63 with a continuation bit
                 else if shift == 63
                     answer = Err(Overflow(after: used))
                     reading = false
