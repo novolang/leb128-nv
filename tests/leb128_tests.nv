@@ -222,5 +222,6 @@ fn test_decode_from_refuses_a_tenth_byte_above_one() [io]
 
 @test
 fn test_each_error_names_its_byte_count() [io]
-    test.assert_eq_str(Truncated(after: 2).message(), "leb128: input ended after 2 byte(s) with the varint unfinished")
+    test.assert_eq_str(Truncated(after: 2).message(),
+        "leb128: input ended after 2 byte(s) with the varint unfinished")
     test.assert_eq_str(Overflow(after: 10).message(), "leb128: the varint exceeds 64 bits after 10 byte(s)")
